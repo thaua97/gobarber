@@ -68,6 +68,15 @@ class AppointmentController {
         }
 
         /**
+         * Check if provider agend in your provider profile.
+         */
+        if (provider_id === req.userId) {
+            return res.status(401).json({
+                error: 'Você não poder marcar um horario para você mesmo',
+            });
+        }
+
+        /**
          * Check for past dates
          */
         const hourStart = startOfHour(parseISO(data));
