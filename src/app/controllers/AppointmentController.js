@@ -1,5 +1,5 @@
 import * as Yup from 'yup';
-import { startOfHour, parseISO, isBefore, format } from 'date-fns';
+import { startOfHour, parseISO, isBefore, format, subHours } from 'date-fns';
 import pt from 'date-fns/locale/pt';
 
 import Appointment from '../models/Appointment';
@@ -129,6 +129,37 @@ class AppointmentController {
         });
 
         return res.json(appointment);
+    }
+
+    async delete(req, res) {
+        const appoitment = await Appointment.findByPk(req.params.id);
+
+        if (appoitment.canceled_at !== null) {
+            return res
+                .status(400)
+                .json({ error: 'Este agendamento já foi Cancelado.' });
+        }
+
+        if (appoitment.user_id !== req.userId) {
+            return res
+                .status(400)
+                .json({ error: 'Este agendamento não pertence a você!' });
+        }
+
+        const dateWithSub = subHours(appoitment.data, 2);
+
+        if (isBefore(dateWithSub, new Date())) {
+            return res.status(401).json({
+                error:
+                    'Você só pode cancelar até 2 horas antes do atendimento.',
+            });
+        }
+
+        appoitment.canceled_at = new Date();
+
+        await appoitment.save();
+
+        return res.json(appoitment);
     }
 }
 
