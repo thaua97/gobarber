@@ -7,7 +7,9 @@ import File from '../models/File';
 import User from '../models/User';
 import Notification from '../schemas/Notification';
 
-import Mail from '../../lib/Mail';
+import Queue from '../../lib/Queue';
+
+import CancellationMail from '../jobs/CancellationMail';
 
 class AppointmentController {
     async index(req, res) {
@@ -48,7 +50,9 @@ class AppointmentController {
         });
 
         if (!(await schema.isValid(req.body))) {
-            return res.status(400).json({ error: 'Validação falhou!' });
+            return res.status(400).json({
+                error: 'Validação falhou!',
+            });
         }
 
         const { provider_id, data } = req.body;
@@ -64,9 +68,9 @@ class AppointmentController {
         });
 
         if (!checkIsProvider) {
-            return res
-                .status(401)
-                .json({ error: 'O Usuario não é um provedor!' });
+            return res.status(401).json({
+                error: 'O Usuario não é um provedor!',
+            });
         }
 
         /**
@@ -101,9 +105,9 @@ class AppointmentController {
         });
 
         if (checkAvailibility) {
-            return res
-                .status(400)
-                .json({ error: 'Horario não esta disponivel!' });
+            return res.status(400).json({
+                error: 'Horario não esta disponivel!',
+            });
         }
 
         /**
@@ -122,7 +126,9 @@ class AppointmentController {
         const formattedDate = format(
             hourStart,
             "'dia' dd 'de' MMMM', às' H'h'mm",
-            { locale: pt }
+            {
+                locale: pt,
+            }
         );
 
         await Notification.create({
@@ -134,7 +140,7 @@ class AppointmentController {
     }
 
     async delete(req, res) {
-        const appoitment = await Appointment.findByPk(req.params.id, {
+        const appointment = await Appointment.findByPk(req.params.id, {
             include: [
                 {
                     model: User,
@@ -149,19 +155,19 @@ class AppointmentController {
             ],
         });
 
-        if (appoitment.canceled_at !== null) {
-            return res
-                .status(400)
-                .json({ error: 'Este agendamento já foi Cancelado.' });
+        if (appointment.canceled_at !== null) {
+            return res.status(400).json({
+                error: 'Este agendamento já foi Cancelado.',
+            });
         }
 
-        if (appoitment.user_id !== req.userId) {
-            return res
-                .status(400)
-                .json({ error: 'Este agendamento não pertence a você!' });
+        if (appointment.user_id !== req.userId) {
+            return res.status(400).json({
+                error: 'Este agendamento não pertence a você!',
+            });
         }
 
-        const dateWithSub = subHours(appoitment.data, 2);
+        const dateWithSub = subHours(appointment.data, 2);
 
         if (isBefore(dateWithSub, new Date())) {
             return res.status(401).json({
@@ -170,26 +176,15 @@ class AppointmentController {
             });
         }
 
-        appoitment.canceled_at = new Date();
+        appointment.canceled_at = new Date();
 
-        await appoitment.save();
+        await appointment.save();
 
-        await Mail.sendMail({
-            to: `${appoitment.provider.name} <${appoitment.provider.email}>`,
-            subject: 'Agendamento cancelado',
-            template: 'cancellation',
-            context: {
-                provider: appoitment.provider.name,
-                user: appoitment.user.name,
-                data: format(
-                    appoitment.data,
-                    "'dia' dd 'de' MMMM', às' H'h'mm",
-                    { locale: pt }
-                ),
-            },
+        await Queue.add(CancellationMail.key, {
+            appointment,
         });
 
-        return res.json(appoitment);
+        return res.json(appointment);
     }
 }
 
